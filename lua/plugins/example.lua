@@ -66,12 +66,15 @@ return {
   -- add pyright to lspconfig
   {
     "neovim/nvim-lspconfig",
-    ---@class PluginLspOpts
     opts = {
-      ---@type lspconfig.options
       servers = {
-        -- pyright will be automatically installed with mason and loaded with lspconfig
+        -- enable only the LSPs you need
         pyright = {},
+        lua_ls = {},
+        tailwindcss = {},
+        -- explicitly disable TypeScript
+        tsserver = false,
+        ts_ls = false,
       },
     },
   },
