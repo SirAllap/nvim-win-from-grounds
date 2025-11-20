@@ -99,7 +99,7 @@ return {
   },
   {
     "maxmx03/fluoromachine.nvim",
-    lazy = true,
+    lazy = false, -- load immediately
     priority = 1000, -- make sure it loads before other plugins
     opts = {
       glow = false, -- enable the neon glow effect
@@ -108,27 +108,8 @@ return {
     },
     config = function(_, opts)
       require("fluoromachine").setup(opts)
+      vim.cmd.colorscheme("fluoromachine")
     end,
   },
-  {
-    "shaunsingh/moonlight.nvim",
-    lazy = false,
-    priority = 1000,
-    init = function()
-      vim.g.moonlight_italic_comments = true
-      vim.g.moonlight_italic_keywords = true
-      vim.g.moonlight_italic_functions = true
-      vim.g.moonlight_italic_variables = false
-      vim.g.moonlight_italic_conditionals = true
-      vim.g.moonlight_italic_types = true
-      vim.g.moonlight_italic_statements = true
-      vim.g.moonlight_contrast = true
-      vim.g.moonlight_borders = false
-      vim.g.moonlight_disable_background = false
-      vim.g.moonlight_transparent = false
-    end,
-    config = function()
-      vim.cmd.colorscheme("moonlight")
-    end,
-  },
+
 }
