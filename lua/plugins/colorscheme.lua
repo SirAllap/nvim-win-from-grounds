@@ -99,8 +99,7 @@ return {
   },
   {
     "maxmx03/fluoromachine.nvim",
-    lazy = false, -- load immediately
-    priority = 1000, -- make sure it loads before other plugins
+    lazy = true, -- don't load immediately, let Aether handle it
     opts = {
       glow = false, -- enable the neon glow effect
       theme = "fluoromachine", -- optional, you can pick variants
@@ -108,7 +107,7 @@ return {
     },
     config = function(_, opts)
       require("fluoromachine").setup(opts)
-      vim.cmd.colorscheme("fluoromachine")
+      -- Don't set colorscheme here, let Aether handle it
     end,
   },
 
