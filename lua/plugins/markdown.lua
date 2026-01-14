@@ -6,5 +6,8 @@ return {
     build = function()
       vim.fn["mkdp#util#install"]()
     end,
+    config = function()
+      vim.g.mkdp_browser = '/home/serallap/bin/zen-browser'  -- Use the custom script for Zen browser
+    end,
   },
 }
