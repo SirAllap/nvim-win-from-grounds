@@ -1,1 +1,1 @@
-/home/serallap/.config/omarchy/current/theme/neovim.lua
+return {}
