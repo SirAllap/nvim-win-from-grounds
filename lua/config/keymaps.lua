@@ -37,3 +37,19 @@ keymap.set("n", "<leader>rn", vim.lsp.buf.rename, { desc = "Rename Symbol" })
 
 -- Exit insert mode
 keymap.set("i", "jj", "<Esc>", opts)
+
+-- Show diagnostic under cursor
+vim.keymap.set("n", "<leader>cd", function()
+  vim.diagnostic.open_float(nil, { focus = false })
+end, { desc = "Show diagnostic" })
+
+-- Toggle diagnostics (per buffer)
+vim.keymap.set("n", "<leader>td", function()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local disabled = vim.diagnostic.is_disabled(bufnr)
+  if disabled then
+    vim.diagnostic.enable(bufnr)
+  else
+    vim.diagnostic.disable(bufnr)
+  end
+end, { desc = "Toggle diagnostics" })
