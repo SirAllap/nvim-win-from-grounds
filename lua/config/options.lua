@@ -7,3 +7,7 @@ vim.opt.linebreak = true
 vim.opt.breakindent = true
 vim.opt.showbreak = "↪ "
 vim.g.autoformat = false
+
+vim.opt.colorcolumn = "100"
+
+vim.opt.clipboard = "unnamedplus"
