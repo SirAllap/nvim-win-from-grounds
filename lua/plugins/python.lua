@@ -3,7 +3,14 @@ return {
   "stevearc/conform.nvim",
   opts = {
     formatters_by_ft = {
-      python = { "black" },
+      python = function(bufnr)
+        -- Use Ruff in Smith project, Black elsewhere
+        if vim.startswith(vim.fn.getcwd(), '/home/serallap/code/smith') then
+          return {} -- Disable conform, use custom autocmd
+        else
+          return { "black" }
+        end
+      end,
       javascript = { "prettier" },
       typescript = { "prettier" },
       javascriptreact = { "prettier" },
@@ -15,7 +22,7 @@ return {
     },
     formatters = {
       black = {
-        prepend_args = { "--line-length=79" },
+        prepend_args = { "--line-length=79" }, -- Keep for non-Smith
       },
     },
   },

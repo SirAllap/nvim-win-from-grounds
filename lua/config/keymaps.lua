@@ -53,3 +53,8 @@ vim.keymap.set("n", "<leader>td", function()
     vim.diagnostic.disable(bufnr)
   end
 end, { desc = "Toggle diagnostics" })
+
+-- Manual Python format with Ruff (Smith project only)
+vim.keymap.set("n", "<leader>fp", function()
+  require("config.format").format_python_file()
+end, { desc = "Format Python file with Ruff" })
