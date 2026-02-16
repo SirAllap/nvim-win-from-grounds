@@ -8,7 +8,30 @@
   "neoconf": {
     "plugins": {
       "lua_ls": {
-        "enabled": true
+        "enabled": true,
+        "settings": {
+          "Lua": {
+            "runtime": {
+              "version": "LuaJIT"
+            },
+            "diagnostics": {
+              "globals": ["vim", "describe", "it", "before_each", "after_each"]
+            },
+            "workspace": {
+              "library": {
+                "${3rd}/luv/library"
+              },
+              "maxPreload": 1000,
+              "preloadFileSize": 500
+            },
+            "completion": {
+              "callSnippet": "Replace"
+            },
+            "hint": {
+              "enable": true
+            }
+          }
+        }
       }
     }
   }

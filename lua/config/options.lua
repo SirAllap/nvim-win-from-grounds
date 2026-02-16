@@ -8,6 +8,17 @@ vim.opt.breakindent = true
 vim.opt.showbreak = "↪ "
 vim.g.autoformat = false
 
-vim.opt.colorcolumn = "100"
+-- Visual indicator for line length
+vim.opt.colorcolumn = "121"
+
+-- Aggressive highlight for lines >120
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = { "python", "javascript", "typescript", "lua" },
+  callback = function()
+    vim.opt_local.colorcolumn = "121"
+    vim.cmd [[highlight OverLength guibg=#FF5555 ctermbg=Red]]
+    vim.cmd [[match OverLength /\%121v.\+/]]
+  end,
+})
 
 vim.opt.clipboard = "unnamedplus"
