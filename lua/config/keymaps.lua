@@ -54,6 +54,15 @@ vim.keymap.set("n", "<leader>td", function()
   end
 end, { desc = "Toggle diagnostics" })
 
+-- Disable LazyVim tab keymaps (prevent accidental tab creation)
+vim.keymap.del("n", "<leader><tab><tab>", { silent = true })
+vim.keymap.del("n", "<leader><tab>]", { silent = true })
+vim.keymap.del("n", "<leader><tab>[", { silent = true })
+vim.keymap.del("n", "<leader><tab>d", { silent = true })
+vim.keymap.del("n", "<leader><tab>l", { silent = true })
+vim.keymap.del("n", "<leader><tab>o", { silent = true })
+vim.keymap.del("n", "<leader><tab>f", { silent = true })
+
 -- Manual Python format with Ruff (Smith project only)
 vim.keymap.set("n", "<leader>fp", function()
   require("config.format").format_python_file()
