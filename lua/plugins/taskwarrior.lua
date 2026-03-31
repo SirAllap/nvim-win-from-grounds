@@ -349,7 +349,13 @@ local function task_picker()
           for _, n in ipairs(notes) do table.insert(lines, "  - " .. n) end
         end
       end
-      vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
+      local safe_lines = {}
+      for _, line in ipairs(lines) do
+        for _, subline in ipairs(vim.split(line, "\n", { plain = true })) do
+          table.insert(safe_lines, subline)
+        end
+      end
+      vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, safe_lines)
       vim.bo[self.state.bufnr].filetype = "markdown"
       vim.schedule(function()
         if vim.api.nvim_win_is_valid(self.state.winid) then
