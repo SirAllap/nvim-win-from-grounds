@@ -3,6 +3,7 @@ local function set_hl()
   vim.api.nvim_set_hl(0, "TaskDone", { fg = "#6b7280", strikethrough = true })
   vim.api.nvim_set_hl(0, "TaskOverdue", { fg = "#ef4444", bold = true })
   vim.api.nvim_set_hl(0, "TaskDueToday", { fg = "#eab308", bold = true })
+  vim.api.nvim_set_hl(0, "TaskProject", { fg = "#7c3aed", bold = true })
 end
 set_hl()
 vim.api.nvim_create_autocmd("ColorScheme", { callback = set_hl })
@@ -90,7 +91,8 @@ end, 2000)
 local copied_tags = {}
 local sort_mode = "default"
 local filter_tag = nil
-local sort_modes = { "default", "priority", "due", "created" }
+local filter_project = nil
+local sort_modes = { "default", "priority", "due", "created", "urgency" }
 
 -- Due date helpers
 local function today_ts()
@@ -138,12 +140,13 @@ local function get_tasks()
         for _, tag in ipairs(t.tags or {}) do if tag == filter_tag then has = true end end
         if not has then goto continue end
       end
+      if filter_project and t.project ~= filter_project then goto continue end
       local ds = due_status(t)
       if ds == "overdue" then overdue_n = overdue_n + 1
       elseif ds == "today" then today_n = today_n + 1 end
       table.insert(pending, t)
     elseif t.status == "completed" then
-      if not filter_tag then table.insert(done, t) end
+      if not filter_tag and not filter_project then table.insert(done, t) end
     end
     ::continue::
   end
@@ -156,6 +159,8 @@ local function get_tasks()
     table.sort(pending, function(a, b) return (a.due or "9") < (b.due or "9") end)
   elseif sort_mode == "created" then
     table.sort(pending, function(a, b) return (a.entry or "") > (b.entry or "") end)
+  elseif sort_mode == "urgency" then
+    table.sort(pending, function(a, b) return (a.urgency or 0) > (b.urgency or 0) end)
   end
 
   local result = {}
@@ -180,12 +185,16 @@ local function parse_input(input)
     table.insert(args, "+" .. tag)
     return ""
   end)
+  input = input:gsub("@([%w][%w.]*)", function(proj)
+    table.insert(args, "project:" .. proj)
+    return ""
+  end)
   input = input:gsub("%s+", " "):match("^%s*(.-)%s*$")
   return input, args
 end
 
 local function add_task(callback)
-  vim.ui.input({ prompt = "Task (!h/!m/!l  #0=today #1=tomorrow  +tag): " }, function(input)
+  vim.ui.input({ prompt = "Task (!h/!m/!l  #0=today #1=tomorrow  +tag  @project):" }, function(input)
     if input and input ~= "" then
       local desc, args = parse_input(input)
       vim.fn.system("task add " .. vim.fn.shellescape(desc) .. " " .. table.concat(args, " "))
@@ -220,7 +229,9 @@ local function make_entry(task)
   local due_col = pad(due_str, DUE_WIDTH)
 
   local prio_str = is_done and "(✓)  " or (prio_icon[task.priority or ""] or "-    ")
-  local desc = string.format("=> [%s] %s", id, task.description)
+  local id_prefix = string.format("=> [%s] ", id)
+  local project_str = task.project and ("@" .. task.project .. " ") or ""
+  local desc = id_prefix .. project_str .. task.description
 
   local date_str = ""
   if task.entry then
@@ -231,6 +242,9 @@ local function make_entry(task)
   local p0, p1 = 0, #tag_str
   local p2, p3 = #tag_col + 3, #tag_col + 3 + #due_str
   local p4, p5 = #tag_col + 3 + #due_col + 3, #tag_col + 3 + #due_col + 3 + #vim.trim(prio_str)
+  local desc_start = #tag_col + 3 + #due_col + 3 + #prio_str
+  local p6 = desc_start + #id_prefix
+  local p7 = p6 + #project_str
 
   local ds = due_status(task)
 
@@ -242,6 +256,7 @@ local function make_entry(task)
       ({ H = "!!", M = "!", L = "." })[task.priority or ""] or "",
       due_str ~= "-" and due_str or "",
       date_str,
+      task.project or "",
     }), " "),
     display = function()
       local total = vim.api.nvim_win_get_width(0) - 2
@@ -263,6 +278,7 @@ local function make_entry(task)
           table.insert(hls, { { p2, p3 }, "DiagnosticInfo" })
         end
         if prio_str ~= "" then table.insert(hls, { { p4, p5 }, "DiagnosticWarn" }) end
+        if project_str ~= "" then table.insert(hls, { { p6, p7 }, "TaskProject" }) end
         if date_str ~= "" then table.insert(hls, { { #mid + rpad, #line }, "Comment" }) end
       end
       return line, hls
@@ -303,6 +319,9 @@ local function task_picker()
           table.insert(lines, "Due:      " .. label)
         end
       end
+      if task.project then
+        table.insert(lines, "Project:  " .. task.project)
+      end
       if task.entry then
         local y, m, d = task.entry:match("^(%d%d%d%d)(%d%d)(%d%d)")
         if y then table.insert(lines, "Created:  " .. y .. "-" .. m .. "-" .. d) end
@@ -340,6 +359,7 @@ local function task_picker()
     if overdue_n > 0 then table.insert(parts, overdue_n .. " overdue") end
     if today_n > 0 then table.insert(parts, today_n .. " due today") end
     if filter_tag then table.insert(parts, "filter: [" .. filter_tag .. "]") end
+    if filter_project then table.insert(parts, "filter: @" .. filter_project) end
     if sort_mode ~= "default" then table.insert(parts, "sort: " .. sort_mode) end
     return table.concat(parts, " · ")
   end
@@ -430,7 +450,7 @@ local function task_picker()
           sl_refresh()
           full_refresh(prompt_bufnr)
         else
-          vim.ui.input({ prompt = "Task (!h/!m/!l  #0=today #1=tomorrow  +tag): " }, function(input)
+          vim.ui.input({ prompt = "Task (!h/!m/!l  #0=today #1=tomorrow  +tag  @project):" }, function(input)
             if not input or input == "" then return end
             local desc, args = parse_input(input)
             vim.fn.system("task add " .. vim.fn.shellescape(desc) .. " " .. table.concat(args, " "))
@@ -449,6 +469,7 @@ local function task_picker()
         local current = task.description
         if task.tags then current = current .. " +" .. table.concat(task.tags, " +") end
         if task.priority then current = current .. " !" .. task.priority:lower() end
+        if task.project then current = current .. " @" .. task.project end
         if task.due then
           local y, m, d = task.due:match("^(%d%d%d%d)(%d%d)(%d%d)")
           if y then
@@ -459,7 +480,7 @@ local function task_picker()
             current = current .. " #" .. days
           end
         end
-        vim.ui.input({ prompt = "Edit task (!h/!m/!l  #0=today #1=tomorrow  +tag): ", default = current }, function(input)
+        vim.ui.input({ prompt = "Edit task (!h/!m/!l  #0=today #1=tomorrow  +tag  @project):", default = current }, function(input)
           if not input or input == "" then return end
           local desc, args = parse_input(input)
           local new_tags = {}
@@ -477,6 +498,9 @@ local function task_picker()
           local has_prio = false
           for _, a in ipairs(args) do if a:match("^priority:") then has_prio = true end end
           if task.priority and not has_prio then table.insert(args, "priority:") end
+          local has_proj = false
+          for _, a in ipairs(args) do if a:match("^project:") then has_proj = true end end
+          if task.project and not has_proj then table.insert(args, "project:") end
           local ref = task.id ~= 0 and task.id or task.uuid
           vim.fn.system("task rc.confirmation=no " .. ref .. " modify " .. vim.fn.shellescape(desc) .. " " .. table.concat(args, " "))
           vim.notify("Task updated", vim.log.levels.INFO)
@@ -510,32 +534,40 @@ local function task_picker()
         full_refresh(prompt_bufnr)
       end)
 
-      -- Filter by tag
+      -- Filter by tag or project
       map({ "i", "n" }, "<C-f>", function()
-        if filter_tag then
+        if filter_tag or filter_project then
           filter_tag = nil
+          filter_project = nil
           vim.notify("Filter cleared", vim.log.levels.INFO)
           full_refresh(prompt_bufnr)
           return
         end
-        -- collect all unique tags
-        local tags_set, tags_list = {}, {}
+        local items, seen = {}, {}
         for _, t in ipairs(all_tasks) do
           for _, tag in ipairs(t.tags or {}) do
-            if not tags_set[tag] then tags_set[tag] = true; table.insert(tags_list, tag) end
+            local key = "tag:" .. tag
+            if not seen[key] then seen[key] = true; table.insert(items, { kind = "tag", value = tag, display = "[" .. tag .. "]" }) end
+          end
+          if t.project then
+            local key = "project:" .. t.project
+            if not seen[key] then seen[key] = true; table.insert(items, { kind = "project", value = t.project, display = "@" .. t.project }) end
           end
         end
-        if #tags_list == 0 then vim.notify("No tags found", vim.log.levels.WARN); return end
-        table.sort(tags_list)
+        if #items == 0 then vim.notify("No tags or projects found", vim.log.levels.WARN); return end
+        table.sort(items, function(a, b)
+          if a.kind ~= b.kind then return a.kind < b.kind end
+          return a.value < b.value
+        end)
         actions.close(prompt_bufnr)
         vim.schedule(function()
           pickers.new({}, {
-            prompt_title = "Filter by tag  [<Esc> cancel]",
+            prompt_title = "Filter by tag / project  [<Esc> cancel]",
             sorting_strategy = "ascending",
             finder = finders.new_table({
-              results = tags_list,
-              entry_maker = function(t)
-                return { value = t, display = "[" .. t .. "]", ordinal = t }
+              results = items,
+              entry_maker = function(item)
+                return { value = item, display = item.display, ordinal = item.value }
               end,
             }),
             sorter = conf.generic_sorter({}),
@@ -544,7 +576,10 @@ local function task_picker()
               fmap({ "i", "n" }, "<C-c>", function() actions.close(fbufnr); task_picker() end)
               actions.select_default:replace(function()
                 local sel = action_state.get_selected_entry()
-                if sel then filter_tag = sel.value end
+                if sel then
+                  if sel.value.kind == "tag" then filter_tag = sel.value.value
+                  else filter_project = sel.value.value end
+                end
                 actions.close(fbufnr)
                 task_picker()
               end)
