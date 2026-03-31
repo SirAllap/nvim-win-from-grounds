@@ -325,7 +325,6 @@ local function task_picker()
   local action_utils = require("telescope.actions.utils")
 
   local preview_winid = nil
-  local results_winid = nil
   local task_previewer = previewers.new_buffer_previewer({
     title = "Task Details",
     define_preview = function(self, entry)
@@ -387,16 +386,6 @@ local function task_picker()
           vim.wo[self.state.winid].linebreak = true
         end
       end)
-      -- Preview navigation: h/Esc/q go back to results
-      local pbuf = self.state.bufnr
-      local function go_back()
-        if results_winid and vim.api.nvim_win_is_valid(results_winid) then
-          vim.api.nvim_set_current_win(results_winid)
-        end
-      end
-      vim.keymap.set("n", "h", go_back, { buffer = pbuf, nowait = true })
-      vim.keymap.set("n", "<Esc>", go_back, { buffer = pbuf, nowait = true })
-      vim.keymap.set("n", "q", go_back, { buffer = pbuf, nowait = true })
     end,
   })
 
@@ -455,11 +444,30 @@ local function task_picker()
       -- Switch to search/create bar
       map("n", "<C-w>", function() vim.cmd("startinsert") end)
 
-      -- Focus preview (l) to scroll with j/k; h/Esc/q returns to list
+      -- Preview scroll mode: l enters, h exits. j/k scroll preview instead of moving selection.
+      local preview_mode = false
       map("n", "l", function()
-        if preview_winid and vim.api.nvim_win_is_valid(preview_winid) then
-          results_winid = vim.api.nvim_get_current_win()
-          vim.api.nvim_set_current_win(preview_winid)
+        preview_mode = true
+        vim.notify("Preview: j/k scroll · h back to list", vim.log.levels.INFO)
+      end)
+      map("n", "h", function()
+        if preview_mode then
+          preview_mode = false
+          vim.notify("List mode", vim.log.levels.INFO)
+        end
+      end)
+      map("n", "j", function()
+        if preview_mode and preview_winid and vim.api.nvim_win_is_valid(preview_winid) then
+          vim.api.nvim_win_call(preview_winid, function() vim.cmd("normal! 3j") end)
+        else
+          actions.move_selection_next(prompt_bufnr)
+        end
+      end)
+      map("n", "k", function()
+        if preview_mode and preview_winid and vim.api.nvim_win_is_valid(preview_winid) then
+          vim.api.nvim_win_call(preview_winid, function() vim.cmd("normal! 3k") end)
+        else
+          actions.move_selection_previous(prompt_bufnr)
         end
       end)
 
