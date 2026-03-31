@@ -22,16 +22,16 @@ local function sl_refresh()
       local ok, tasks = pcall(vim.fn.json_decode, s and raw:sub(s) or raw)
       if not ok or type(tasks) ~= "table" then sl_cache.text = ""; sl_cache.ts = os.time(); return end
       local pending, overdue, due_today = 0, 0, 0
-      local now_t = os.date("*t")
-      local today = os.time({ year = now_t.year, month = now_t.month, day = now_t.day, hour = 0, min = 0, sec = 0 })
+      local today = today_ts()
       local tomorrow = today + 86400
       for _, t in ipairs(tasks) do
         if t.status == "pending" then
           pending = pending + 1
           if t.due then
-            local y, m, d = t.due:match("^(%d%d%d%d)(%d%d)(%d%d)")
-            if y then
-              local due_ts = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 0, min = 0, sec = 0 })
+            local due_ts = parse_tw_date(t.due)
+            if due_ts then
+              local dd = os.date("*t", due_ts)
+              due_ts = os.time({ year = dd.year, month = dd.month, day = dd.day, hour = 0, min = 0, sec = 0 })
               if due_ts < today then overdue = overdue + 1
               elseif due_ts < tomorrow then due_today = due_today + 1 end
             end
@@ -60,15 +60,15 @@ vim.defer_fn(function()
   local s = raw:find("%[\n")
   local ok, tasks = pcall(vim.fn.json_decode, s and raw:sub(s) or raw)
   if not ok or type(tasks) ~= "table" then return end
-  local now_t = os.date("*t")
-  local today = os.time({ year = now_t.year, month = now_t.month, day = now_t.day, hour = 0, min = 0, sec = 0 })
+  local today = today_ts()
   local tomorrow = today + 86400
   local overdue, due_today = {}, {}
   for _, t in ipairs(tasks) do
     if t.status == "pending" and t.due then
-      local y, m, d = t.due:match("^(%d%d%d%d)(%d%d)(%d%d)")
-      if y then
-        local due_ts = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 0, min = 0, sec = 0 })
+      local due_ts = parse_tw_date(t.due)
+      if due_ts then
+        local dd = os.date("*t", due_ts)
+        due_ts = os.time({ year = dd.year, month = dd.month, day = dd.day, hour = 0, min = 0, sec = 0 })
         if due_ts < today then table.insert(overdue, t.description)
         elseif due_ts < tomorrow then table.insert(due_today, t.description) end
       end
@@ -101,16 +101,46 @@ local function today_ts()
   return os.time({ year = t.year, month = t.month, day = t.day, hour = 0, min = 0, sec = 0 })
 end
 
+-- Parse a taskwarrior UTC timestamp ("20260330T220000Z") into a local Unix timestamp.
+-- Taskwarrior always exports dates in UTC; reading just the date portion gives the wrong
+-- day for UTC+ users (local midnight = previous day in UTC).
+local function parse_tw_date(tw_str)
+  if not tw_str then return nil end
+  local y, mo, d, h, mi, s = tw_str:match("^(%d%d%d%d)(%d%d)(%d%d)T(%d%d)(%d%d)(%d%d)Z$")
+  if not y then
+    y, mo, d = tw_str:match("^(%d%d%d%d)(%d%d)(%d%d)$")
+    if not y then return nil end
+    return os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d), hour = 0, min = 0, sec = 0 })
+  end
+  -- os.time() interprets its table as local time, so feeding UTC values gives a wrong
+  -- timestamp. Correct by computing the local↔UTC offset at that moment.
+  local fake_ts = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
+                             hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
+  local diff = os.difftime(fake_ts, os.time(os.date("!*t", fake_ts)))
+  return fake_ts + diff
+end
+
+-- Return the local date string "YYYY-MM-DD" for a taskwarrior UTC timestamp.
+local function tw_date_str(tw_str)
+  local ts = parse_tw_date(tw_str)
+  if not ts then return nil end
+  local t = os.date("*t", ts)
+  return string.format("%04d-%02d-%02d", t.year, t.month, t.day)
+end
+
 local function due_status(task)
   if not task.due then return nil end
-  local y, m, d = task.due:match("^(%d%d%d%d)(%d%d)(%d%d)")
-  if not y then return nil end
-  local due_ts = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 0, min = 0, sec = 0 })
+  local due_ts = parse_tw_date(task.due)
+  if not due_ts then return nil end
+  -- Snap to local midnight for day-level comparison
+  local due_day = os.date("*t", due_ts)
+  due_ts = os.time({ year = due_day.year, month = due_day.month, day = due_day.day, hour = 0, min = 0, sec = 0 })
   if task.status == "completed" then
     if task["end"] then
-      local ey, em, ed = task["end"]:match("^(%d%d%d%d)(%d%d)(%d%d)")
-      if ey then
-        local end_ts = os.time({ year = tonumber(ey), month = tonumber(em), day = tonumber(ed), hour = 0, min = 0, sec = 0 })
+      local end_ts = parse_tw_date(task["end"])
+      if end_ts then
+        local end_day = os.date("*t", end_ts)
+        end_ts = os.time({ year = end_day.year, month = end_day.month, day = end_day.day, hour = 0, min = 0, sec = 0 })
         if due_ts < end_ts then return "overdue" end
       end
     end
@@ -227,10 +257,8 @@ local function make_entry(task)
   local tag_col = pad(tag_str, TAG_WIDTH)
 
   local due_str = "-"
-  if task.due then
-    local y, m, d = task.due:match("^(%d%d%d%d)(%d%d)(%d%d)")
-    if y then due_str = string.format("{%s-%s-%s}", y, m, d) end
-  end
+  local due_local = tw_date_str(task.due)
+  if due_local then due_str = "{" .. due_local .. "}" end
   local due_col = pad(due_str, DUE_WIDTH)
 
   local prio_str = is_done and "(✓)  " or (prio_icon[task.priority or ""] or "-    ")
@@ -238,11 +266,7 @@ local function make_entry(task)
   local project_str = task.project and ("@" .. task.project .. " ") or ""
   local desc = id_prefix .. project_str .. task.description
 
-  local date_str = ""
-  if task.entry then
-    local y, m, d = task.entry:match("^(%d%d%d%d)(%d%d)(%d%d)")
-    if y then date_str = y .. "-" .. m .. "-" .. d end
-  end
+  local date_str = tw_date_str(task.entry) or ""
 
   local p0, p1 = 0, #tag_str
   local p2, p3 = #tag_col + 3, #tag_col + 3 + #due_str
@@ -314,28 +338,22 @@ local function task_picker()
         local p = ({ H = "High (!!)", M = "Medium (!)", L = "Low (.)" })[task.priority] or task.priority
         table.insert(lines, "Priority: " .. p)
       end
-      if task.due then
-        local y, m, d = task.due:match("^(%d%d%d%d)(%d%d)(%d%d)")
-        if y then
-          local label = y .. "-" .. m .. "-" .. d
-          local ds = due_status(task)
-          if ds == "overdue" then label = label .. " [OVERDUE]"
-          elseif ds == "today" then label = label .. " [TODAY]" end
-          table.insert(lines, "Due:      " .. label)
-        end
+      local due_local = tw_date_str(task.due)
+      if due_local then
+        local label = due_local
+        local ds = due_status(task)
+        if ds == "overdue" then label = label .. " [OVERDUE]"
+        elseif ds == "today" then label = label .. " [TODAY]" end
+        table.insert(lines, "Due:      " .. label)
       end
       if task.project then
         table.insert(lines, "Project:  " .. task.project)
       end
-      if task.entry then
-        local y, m, d = task.entry:match("^(%d%d%d%d)(%d%d)(%d%d)")
-        if y then table.insert(lines, "Created:  " .. y .. "-" .. m .. "-" .. d) end
-      end
+      local created_local = tw_date_str(task.entry)
+      if created_local then table.insert(lines, "Created:  " .. created_local) end
       table.insert(lines, "Status:   " .. task.status)
-      if task["end"] then
-        local ey, em, ed = task["end"]:match("^(%d%d%d%d)(%d%d)(%d%d)")
-        if ey then table.insert(lines, "Completed: " .. ey .. "-" .. em .. "-" .. ed) end
-      end
+      local completed_local = tw_date_str(task["end"])
+      if completed_local then table.insert(lines, "Completed: " .. completed_local) end
       if task.annotations and #task.annotations > 0 then
         local urls, notes = {}, {}
         for _, ann in ipairs(task.annotations) do
@@ -493,16 +511,15 @@ local function task_picker()
         if task.priority then current = current .. " !" .. task.priority:lower() end
         if task.project then current = current .. " @" .. task.project end
         if task.due then
-          local y, m, d = task.due:match("^(%d%d%d%d)(%d%d)(%d%d)")
-          if y then
-            local due_ts = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 0, min = 0, sec = 0 })
-            local now = os.time()
-            local today_s = os.time({ year = os.date("*t", now).year, month = os.date("*t", now).month, day = os.date("*t", now).day, hour = 0, min = 0, sec = 0 })
-            local days = math.floor((due_ts - today_s) / 86400)
+          local due_ts = parse_tw_date(task.due)
+          if due_ts then
+            local due_day = os.date("*t", due_ts)
+            due_ts = os.time({ year = due_day.year, month = due_day.month, day = due_day.day, hour = 0, min = 0, sec = 0 })
+            local days = math.floor((due_ts - today_ts()) / 86400)
             if days >= 0 then
               current = current .. " #" .. days
             else
-              current = current .. " due:" .. y .. "-" .. m .. "-" .. d
+              current = current .. " due:" .. tw_date_str(task.due)
             end
           end
         end
