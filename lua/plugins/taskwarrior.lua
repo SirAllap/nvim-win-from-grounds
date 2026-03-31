@@ -269,9 +269,11 @@ local function task_picker()
   local action_state = require("telescope.actions.state")
   local action_utils = require("telescope.actions.utils")
 
+  local preview_winid = nil
   local task_previewer = previewers.new_buffer_previewer({
     title = "Task Details",
     define_preview = function(self, entry)
+      preview_winid = self.state.winid
       local task = entry.value
       local lines = { task.description, "" }
       if task.tags and #task.tags > 0 then
@@ -369,7 +371,11 @@ local function task_picker()
       map("n", "<C-w>", function() vim.cmd("startinsert") end)
 
       -- Toggle done / undo done — or add task if no results
-      map({ "i", "n" }, "<CR>", function()
+      local function toggle_or_add()
+        -- Ignore clicks originating from the previewer window
+        local mouse_win = vim.fn.win_getid(vim.v.mouse_win)
+        if preview_winid and mouse_win == preview_winid then return end
+
         local entry = action_state.get_selected_entry()
         if not entry then
           local prompt = action_state.get_current_line()
@@ -395,7 +401,9 @@ local function task_picker()
           sl_refresh()
           vim.defer_fn(function() full_refresh(prompt_bufnr) end, 150)
         end
-      end)
+      end
+      actions.select_default:replace(toggle_or_add)
+      map({ "i", "n" }, "<CR>", toggle_or_add)
 
       -- Add from prompt text
       map({ "i", "n" }, "<C-a>", function()

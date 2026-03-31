@@ -11,6 +11,7 @@ return {
           files = { hidden = true, ignored = true },
           smart = { hidden = true, ignored = true },
           git_files = { hidden = true, ignored = true },
+          grep = { hidden = true, ignored = true },
         },
       },
       dashboard = {
