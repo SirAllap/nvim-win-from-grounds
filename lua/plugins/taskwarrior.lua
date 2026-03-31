@@ -103,6 +103,16 @@ local function due_status(task)
   local y, m, d = task.due:match("^(%d%d%d%d)(%d%d)(%d%d)")
   if not y then return nil end
   local due_ts = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 0, min = 0, sec = 0 })
+  if task.status == "completed" then
+    if task["end"] then
+      local ey, em, ed = task["end"]:match("^(%d%d%d%d)(%d%d)(%d%d)")
+      if ey then
+        local end_ts = os.time({ year = tonumber(ey), month = tonumber(em), day = tonumber(ed), hour = 0, min = 0, sec = 0 })
+        if due_ts < end_ts then return "overdue" end
+      end
+    end
+    return nil
+  end
   local today = today_ts()
   if due_ts < today then return "overdue"
   elseif due_ts < today + 86400 then return "today"
@@ -298,6 +308,10 @@ local function task_picker()
         if y then table.insert(lines, "Created:  " .. y .. "-" .. m .. "-" .. d) end
       end
       table.insert(lines, "Status:   " .. task.status)
+      if task["end"] then
+        local ey, em, ed = task["end"]:match("^(%d%d%d%d)(%d%d)(%d%d)")
+        if ey then table.insert(lines, "Completed:" .. ey .. "-" .. em .. "-" .. ed) end
+      end
       if task.annotations and #task.annotations > 0 then
         table.insert(lines, "")
         table.insert(lines, "Notes:")
@@ -416,8 +430,14 @@ local function task_picker()
           sl_refresh()
           full_refresh(prompt_bufnr)
         else
-          actions.close(prompt_bufnr)
-          add_task(task_picker)
+          vim.ui.input({ prompt = "Task (!h/!m/!l  #0=today #1=tomorrow  +tag): " }, function(input)
+            if not input or input == "" then return end
+            local desc, args = parse_input(input)
+            vim.fn.system("task add " .. vim.fn.shellescape(desc) .. " " .. table.concat(args, " "))
+            vim.notify("Task added: " .. desc, vim.log.levels.INFO)
+            sl_refresh()
+            full_refresh(prompt_bufnr)
+          end)
         end
       end)
 
@@ -439,7 +459,7 @@ local function task_picker()
             current = current .. " #" .. days
           end
         end
-        vim.ui.input({ prompt = "Edit task: ", default = current }, function(input)
+        vim.ui.input({ prompt = "Edit task (!h/!m/!l  #0=today #1=tomorrow  +tag): ", default = current }, function(input)
           if not input or input == "" then return end
           local desc, args = parse_input(input)
           local new_tags = {}
