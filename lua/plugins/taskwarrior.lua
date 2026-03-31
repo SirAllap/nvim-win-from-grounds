@@ -27,7 +27,9 @@ local function parse_tw_date(tw_str)
   end
   local fake_ts = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
                              hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
-  local diff = os.difftime(fake_ts, os.time(os.date("!*t", fake_ts)))
+  local utc_t = os.date("!*t", fake_ts)
+  utc_t.isdst = nil -- let os.time auto-detect DST; "!*t" returns isdst=false which skews the offset
+  local diff = os.difftime(fake_ts, os.time(utc_t))
   return fake_ts + diff
 end
 
