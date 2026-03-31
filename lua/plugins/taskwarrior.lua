@@ -332,10 +332,21 @@ local function task_picker()
         if ey then table.insert(lines, "Completed:" .. ey .. "-" .. em .. "-" .. ed) end
       end
       if task.annotations and #task.annotations > 0 then
-        table.insert(lines, "")
-        table.insert(lines, "Notes:")
+        local urls, notes = {}, {}
         for _, ann in ipairs(task.annotations) do
-          table.insert(lines, "  - " .. (ann.description or ""))
+          local url = (ann.description or ""):match("https?://[^%s]+")
+          if url then table.insert(urls, url)
+          else table.insert(notes, ann.description or "") end
+        end
+        if #urls > 0 then
+          table.insert(lines, "")
+          table.insert(lines, "URLs:")
+          for _, u in ipairs(urls) do table.insert(lines, "  " .. u) end
+        end
+        if #notes > 0 then
+          table.insert(lines, "")
+          table.insert(lines, "Notes:")
+          for _, n in ipairs(notes) do table.insert(lines, "  - " .. n) end
         end
       end
       vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
@@ -394,7 +405,7 @@ local function task_picker()
       preview_cutoff = 1,
       preview_height = 0.3,
     },
-    prompt_title = "Tasks  [<C-a>add · <C-e>edit · <C-n>note · <C-p>prio · <C-s>sort · <C-f>filter · <Tab>sel · <C-b>bulk · <C-d>del]",
+    prompt_title = "Tasks  [<C-a>add · <C-e>edit · <C-n>note · <C-o>url · <C-p>prio · <C-s>sort · <C-f>filter · <Tab>sel · <C-b>bulk · <C-d>del]",
     results_title = results_title(),
     finder = make_finder(),
     previewer = task_previewer,
@@ -766,6 +777,53 @@ local function task_picker()
             full_refresh(prompt_bufnr)
           end
         end)
+      end)
+
+      -- Open URL from annotations (or add one if none exist)
+      map({ "i", "n" }, "<C-o>", function()
+        local entry = action_state.get_selected_entry()
+        if not entry then return end
+        local task = entry.value
+        local urls = {}
+        for _, ann in ipairs(task.annotations or {}) do
+          local url = (ann.description or ""):match("https?://[^%s]+")
+          if url then table.insert(urls, url) end
+        end
+        if #urls == 0 then
+          vim.ui.input({ prompt = "Add URL to task: " }, function(url)
+            if not url or url == "" then return end
+            local ref = task.status == "pending" and task.id or task.uuid
+            vim.fn.system("task rc.confirmation=no " .. ref .. " annotate " .. vim.fn.shellescape(url))
+            vim.notify("URL added", vim.log.levels.INFO)
+            full_refresh(prompt_bufnr)
+          end)
+        elseif #urls == 1 then
+          vim.ui.open(urls[1])
+        else
+          actions.close(prompt_bufnr)
+          vim.schedule(function()
+            pickers.new({}, {
+              prompt_title = "Open URL  [<Esc> cancel]",
+              sorting_strategy = "ascending",
+              finder = finders.new_table({
+                results = urls,
+                entry_maker = function(u) return { value = u, display = u, ordinal = u } end,
+              }),
+              sorter = conf.generic_sorter({}),
+              attach_mappings = function(ubufnr, umap)
+                umap({ "i", "n" }, "<Esc>", function() actions.close(ubufnr); task_picker() end)
+                umap({ "i", "n" }, "<C-c>", function() actions.close(ubufnr); task_picker() end)
+                actions.select_default:replace(function()
+                  local sel = action_state.get_selected_entry()
+                  if sel then vim.ui.open(sel.value) end
+                  actions.close(ubufnr)
+                  task_picker()
+                end)
+                return true
+              end,
+            }):find()
+          end)
+        end
       end)
 
       -- Copy task description
