@@ -446,14 +446,24 @@ local function task_picker()
 
       -- Preview scroll mode: l enters, h exits. j/k scroll preview instead of moving selection.
       local preview_mode = false
+      local function set_preview_hl(active)
+        if not preview_winid or not vim.api.nvim_win_is_valid(preview_winid) then return end
+        if active then
+          vim.wo[preview_winid].cursorline = true
+          vim.wo[preview_winid].winhighlight = "FloatBorder:DiagnosticOk,CursorLine:Visual"
+        else
+          vim.wo[preview_winid].cursorline = false
+          vim.wo[preview_winid].winhighlight = ""
+        end
+      end
       map("n", "l", function()
         preview_mode = true
-        vim.notify("Preview: j/k scroll · h back to list", vim.log.levels.INFO)
+        set_preview_hl(true)
       end)
       map("n", "h", function()
         if preview_mode then
           preview_mode = false
-          vim.notify("List mode", vim.log.levels.INFO)
+          set_preview_hl(false)
         end
       end)
       map("n", "j", function()
