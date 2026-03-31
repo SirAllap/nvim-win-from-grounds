@@ -315,6 +315,52 @@ local function make_entry(task)
   }
 end
 
+local function open_note_float(title, default_text, on_save, on_cancel)
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].filetype = "markdown"
+
+  local width = math.min(80, vim.o.columns - 4)
+  local height = 12
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    row = math.floor((vim.o.lines - height) / 2),
+    col = math.floor((vim.o.columns - width) / 2),
+    width = width,
+    height = height,
+    style = "minimal",
+    border = "rounded",
+    title = " " .. title .. " ",
+    title_pos = "center",
+    footer = " <C-s> save · <Esc>/<q> cancel ",
+    footer_pos = "center",
+  })
+  if default_text and default_text ~= "" then
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(default_text, "\n", { plain = true }))
+  end
+  vim.wo[win].wrap = true
+  vim.wo[win].linebreak = true
+  vim.cmd("startinsert")
+
+  local function save()
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    while #lines > 0 and lines[#lines] == "" do table.remove(lines) end
+    local note = table.concat(lines, "\n")
+    vim.api.nvim_win_close(win, true)
+    if note ~= "" and on_save then on_save(note) end
+  end
+
+  local function cancel()
+    vim.api.nvim_win_close(win, true)
+    if on_cancel then on_cancel() end
+  end
+
+  vim.keymap.set({ "i", "n" }, "<C-s>", save, { buffer = buf, nowait = true })
+  vim.keymap.set("n", "q", cancel, { buffer = buf, nowait = true })
+  vim.keymap.set("n", "<Esc>", cancel, { buffer = buf, nowait = true })
+end
+
 local function task_picker()
   local pickers = require("telescope.pickers")
   local finders = require("telescope.finders")
@@ -838,56 +884,91 @@ local function task_picker()
         end)
       end)
 
-      -- Add note/annotation to task (floating scratch buffer)
+      -- Notes: add/edit/delete annotations
       map({ "i", "n" }, "<C-n>", function()
         local entry = action_state.get_selected_entry()
         if not entry then return end
         local task = entry.value
         local ref = task.status == "pending" and task.id or task.uuid
 
-        local buf = vim.api.nvim_create_buf(false, true)
-        vim.bo[buf].buftype = "nofile"
-        vim.bo[buf].bufhidden = "wipe"
-        vim.bo[buf].filetype = "markdown"
-
-        local width = math.min(80, vim.o.columns - 4)
-        local height = 12
-        local win = vim.api.nvim_open_win(buf, true, {
-          relative = "editor",
-          row = math.floor((vim.o.lines - height) / 2),
-          col = math.floor((vim.o.columns - width) / 2),
-          width = width,
-          height = height,
-          style = "minimal",
-          border = "rounded",
-          title = " Note: " .. task.description:sub(1, 50) .. " ",
-          title_pos = "center",
-          footer = " <C-s> save · <Esc>/<q> cancel ",
-          footer_pos = "center",
-        })
-        vim.wo[win].wrap = true
-        vim.wo[win].linebreak = true
-        vim.cmd("startinsert")
-
-        local function save()
-          local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-          while #lines > 0 and lines[#lines] == "" do table.remove(lines) end
-          local note = table.concat(lines, "\n")
-          vim.api.nvim_win_close(win, true)
-          if note ~= "" then
-            vim.fn.system("task rc.confirmation=no " .. ref .. " annotate " .. vim.fn.shellescape(note))
-            vim.notify("Note added", vim.log.levels.INFO)
-            full_refresh(prompt_bufnr)
+        -- Collect non-URL annotations
+        local notes = {}
+        for _, ann in ipairs(task.annotations or {}) do
+          if not (ann.description or ""):match("^https?://") then
+            table.insert(notes, ann.description or "")
           end
         end
 
-        local function cancel()
-          vim.api.nvim_win_close(win, true)
+        -- No notes: open float to add directly
+        if #notes == 0 then
+          open_note_float("Note: " .. task.description:sub(1, 50), nil, function(note)
+            vim.fn.system("task rc.confirmation=no " .. ref .. " annotate " .. vim.fn.shellescape(note))
+            vim.notify("Note added", vim.log.levels.INFO)
+            full_refresh(prompt_bufnr)
+          end)
+          return
         end
 
-        vim.keymap.set({ "i", "n" }, "<C-s>", save, { buffer = buf, nowait = true })
-        vim.keymap.set("n", "q", cancel, { buffer = buf, nowait = true })
-        vim.keymap.set("n", "<Esc>", cancel, { buffer = buf, nowait = true })
+        -- Has notes: show note picker
+        actions.close(prompt_bufnr)
+        vim.schedule(function()
+          local items = {}
+          for _, desc in ipairs(notes) do
+            table.insert(items, { type = "note", description = desc })
+          end
+          table.insert(items, { type = "add", description = "[+ Add new note]" })
+
+          pickers.new({}, {
+            prompt_title = "Notes  [<CR> edit · d delete · <Esc> back]",
+            sorting_strategy = "ascending",
+            initial_mode = "normal",
+            finder = finders.new_table({
+              results = items,
+              entry_maker = function(item)
+                local display = item.type == "add" and item.description
+                  or ("  " .. item.description:gsub("\n", " "):sub(1, 80))
+                return { value = item, display = display, ordinal = item.description }
+              end,
+            }),
+            sorter = conf.generic_sorter({}),
+            attach_mappings = function(nbufnr, nmap)
+              nmap({ "i", "n" }, "<Esc>", function() actions.close(nbufnr); task_picker() end)
+              nmap({ "i", "n" }, "<C-c>", function() actions.close(nbufnr); task_picker() end)
+              actions.select_default:replace(function()
+                local sel = action_state.get_selected_entry()
+                if not sel then return end
+                actions.close(nbufnr)
+                if sel.value.type == "add" then
+                  open_note_float("Note: " .. task.description:sub(1, 50), nil, function(note)
+                    vim.fn.system("task rc.confirmation=no " .. ref .. " annotate " .. vim.fn.shellescape(note))
+                    vim.notify("Note added", vim.log.levels.INFO)
+                    sl_refresh()
+                    task_picker()
+                  end, task_picker)
+                else
+                  local old = sel.value.description
+                  open_note_float("Edit note", old, function(note)
+                    vim.fn.system("task rc.confirmation=no " .. ref .. " denotate " .. vim.fn.shellescape(old))
+                    vim.fn.system("task rc.confirmation=no " .. ref .. " annotate " .. vim.fn.shellescape(note))
+                    vim.notify("Note updated", vim.log.levels.INFO)
+                    sl_refresh()
+                    task_picker()
+                  end, task_picker)
+                end
+              end)
+              nmap("n", "d", function()
+                local sel = action_state.get_selected_entry()
+                if not sel or sel.value.type == "add" then return end
+                vim.fn.system("task rc.confirmation=no " .. ref .. " denotate " .. vim.fn.shellescape(sel.value.description))
+                vim.notify("Note deleted", vim.log.levels.INFO)
+                actions.close(nbufnr)
+                sl_refresh()
+                task_picker()
+              end)
+              return true
+            end,
+          }):find()
+        end)
       end)
 
       -- Open URL from annotations (or add one if none exist)
