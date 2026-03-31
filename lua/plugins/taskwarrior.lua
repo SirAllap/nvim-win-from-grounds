@@ -189,6 +189,10 @@ local function parse_input(input)
     table.insert(args, "project:" .. proj)
     return ""
   end)
+  input = input:gsub("(due:%d%d%d%d%-%d%d%-%d%d)", function(d)
+    table.insert(args, d)
+    return ""
+  end)
   input = input:gsub("%s+", " "):match("^%s*(.-)%s*$")
   return input, args
 end
@@ -493,8 +497,12 @@ local function task_picker()
             local due_ts = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 0, min = 0, sec = 0 })
             local now = os.time()
             local today_s = os.time({ year = os.date("*t", now).year, month = os.date("*t", now).month, day = os.date("*t", now).day, hour = 0, min = 0, sec = 0 })
-            local days = math.max(0, math.floor((due_ts - today_s) / 86400))
-            current = current .. " #" .. days
+            local days = math.floor((due_ts - today_s) / 86400)
+            if days >= 0 then
+              current = current .. " #" .. days
+            else
+              current = current .. " due:" .. y .. "-" .. m .. "-" .. d
+            end
           end
         end
         vim.ui.input({ prompt = "Edit task (!h/!m/!l  #0=today #1=tomorrow  +tag  @project):", default = current }, function(input)
