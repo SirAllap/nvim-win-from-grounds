@@ -13,6 +13,7 @@ local sl_cache = { text = "", ts = 0 }
 local SL_TTL = 30
 
 local function sl_refresh()
+  sl_cache.ts = os.time()
   vim.fn.jobstart({ "bash", "-c", "TERM=dumb task rc.color=off rc.verbose=nothing export 2>/dev/null" }, {
     stdout_buffered = true,
     on_stdout = function(_, data)
@@ -272,16 +273,16 @@ local function make_entry(task)
       if is_done then
         table.insert(hls, { { 0, #line }, "TaskDone" })
       else
-        if tag_str ~= "" then table.insert(hls, { { p0, p1 }, "Type" }) end
+        if tag_str ~= "-" then table.insert(hls, { { p0, p1 }, "Type" }) end
         -- due date warning colors
         if ds == "overdue" then
           table.insert(hls, { { p2, p3 }, "TaskOverdue" })
         elseif ds == "today" then
           table.insert(hls, { { p2, p3 }, "TaskDueToday" })
-        elseif due_str ~= "" then
+        elseif due_str ~= "-" then
           table.insert(hls, { { p2, p3 }, "DiagnosticInfo" })
         end
-        if prio_str ~= "" then table.insert(hls, { { p4, p5 }, "DiagnosticWarn" }) end
+        if task.priority then table.insert(hls, { { p4, p5 }, "DiagnosticWarn" }) end
         if project_str ~= "" then table.insert(hls, { { p6, p7 }, "TaskProject" }) end
         if date_str ~= "" then table.insert(hls, { { #mid + rpad, #line }, "Comment" }) end
       end
@@ -333,7 +334,7 @@ local function task_picker()
       table.insert(lines, "Status:   " .. task.status)
       if task["end"] then
         local ey, em, ed = task["end"]:match("^(%d%d%d%d)(%d%d)(%d%d)")
-        if ey then table.insert(lines, "Completed:" .. ey .. "-" .. em .. "-" .. ed) end
+        if ey then table.insert(lines, "Completed: " .. ey .. "-" .. em .. "-" .. ed) end
       end
       if task.annotations and #task.annotations > 0 then
         local urls, notes = {}, {}
