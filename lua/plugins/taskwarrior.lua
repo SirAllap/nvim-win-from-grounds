@@ -325,6 +325,7 @@ local function task_picker()
   local action_utils = require("telescope.actions.utils")
 
   local preview_winid = nil
+  local results_winid = nil
   local task_previewer = previewers.new_buffer_previewer({
     title = "Task Details",
     define_preview = function(self, entry)
@@ -386,6 +387,16 @@ local function task_picker()
           vim.wo[self.state.winid].linebreak = true
         end
       end)
+      -- Preview navigation: h/Esc/q go back to results
+      local pbuf = self.state.bufnr
+      local function go_back()
+        if results_winid and vim.api.nvim_win_is_valid(results_winid) then
+          vim.api.nvim_set_current_win(results_winid)
+        end
+      end
+      vim.keymap.set("n", "h", go_back, { buffer = pbuf, nowait = true })
+      vim.keymap.set("n", "<Esc>", go_back, { buffer = pbuf, nowait = true })
+      vim.keymap.set("n", "q", go_back, { buffer = pbuf, nowait = true })
     end,
   })
 
@@ -443,6 +454,14 @@ local function task_picker()
 
       -- Switch to search/create bar
       map("n", "<C-w>", function() vim.cmd("startinsert") end)
+
+      -- Focus preview (l) to scroll with j/k; h/Esc/q returns to list
+      map("n", "l", function()
+        if preview_winid and vim.api.nvim_win_is_valid(preview_winid) then
+          results_winid = vim.api.nvim_get_current_win()
+          vim.api.nvim_set_current_win(preview_winid)
+        end
+      end)
 
       -- Toggle done / undo done — or add task if no results
       local function toggle_or_add()
