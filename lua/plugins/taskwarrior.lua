@@ -414,6 +414,7 @@ local function task_picker()
 
   local function full_refresh(prompt_bufnr)
     local picker = action_state.get_current_picker(prompt_bufnr)
+    if not picker then return end
     local row = picker:get_selection_row()
     all_tasks, overdue_n, today_n = get_tasks()
     picker:refresh(make_finder(), { reset_prompt = false })
