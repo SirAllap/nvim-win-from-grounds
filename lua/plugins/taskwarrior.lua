@@ -8,6 +8,37 @@ end
 set_hl()
 vim.api.nvim_create_autocmd("ColorScheme", { callback = set_hl })
 
+-- Due date helpers (defined early — used by sl_refresh and startup notification)
+local function today_ts()
+  local t = os.date("*t")
+  return os.time({ year = t.year, month = t.month, day = t.day, hour = 0, min = 0, sec = 0 })
+end
+
+-- Parse a taskwarrior UTC timestamp ("20260330T220000Z") into a local Unix timestamp.
+-- Taskwarrior always exports dates in UTC; reading just the date portion gives the wrong
+-- day for UTC+ users (local midnight = previous day in UTC).
+local function parse_tw_date(tw_str)
+  if not tw_str then return nil end
+  local y, mo, d, h, mi, s = tw_str:match("^(%d%d%d%d)(%d%d)(%d%d)T(%d%d)(%d%d)(%d%d)Z$")
+  if not y then
+    y, mo, d = tw_str:match("^(%d%d%d%d)(%d%d)(%d%d)$")
+    if not y then return nil end
+    return os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d), hour = 0, min = 0, sec = 0 })
+  end
+  local fake_ts = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
+                             hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
+  local diff = os.difftime(fake_ts, os.time(os.date("!*t", fake_ts)))
+  return fake_ts + diff
+end
+
+-- Return the local date string "YYYY-MM-DD" for a taskwarrior UTC timestamp.
+local function tw_date_str(tw_str)
+  local ts = parse_tw_date(tw_str)
+  if not ts then return nil end
+  local t = os.date("*t", ts)
+  return string.format("%04d-%02d-%02d", t.year, t.month, t.day)
+end
+
 -- Statusline widget (async, cached)
 local sl_cache = { text = "", ts = 0 }
 local SL_TTL = 30
@@ -94,39 +125,6 @@ local sort_mode = "default"
 local filter_tag = nil
 local filter_project = nil
 local sort_modes = { "default", "priority", "due", "created", "urgency" }
-
--- Due date helpers
-local function today_ts()
-  local t = os.date("*t")
-  return os.time({ year = t.year, month = t.month, day = t.day, hour = 0, min = 0, sec = 0 })
-end
-
--- Parse a taskwarrior UTC timestamp ("20260330T220000Z") into a local Unix timestamp.
--- Taskwarrior always exports dates in UTC; reading just the date portion gives the wrong
--- day for UTC+ users (local midnight = previous day in UTC).
-local function parse_tw_date(tw_str)
-  if not tw_str then return nil end
-  local y, mo, d, h, mi, s = tw_str:match("^(%d%d%d%d)(%d%d)(%d%d)T(%d%d)(%d%d)(%d%d)Z$")
-  if not y then
-    y, mo, d = tw_str:match("^(%d%d%d%d)(%d%d)(%d%d)$")
-    if not y then return nil end
-    return os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d), hour = 0, min = 0, sec = 0 })
-  end
-  -- os.time() interprets its table as local time, so feeding UTC values gives a wrong
-  -- timestamp. Correct by computing the local↔UTC offset at that moment.
-  local fake_ts = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
-                             hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
-  local diff = os.difftime(fake_ts, os.time(os.date("!*t", fake_ts)))
-  return fake_ts + diff
-end
-
--- Return the local date string "YYYY-MM-DD" for a taskwarrior UTC timestamp.
-local function tw_date_str(tw_str)
-  local ts = parse_tw_date(tw_str)
-  if not ts then return nil end
-  local t = os.date("*t", ts)
-  return string.format("%04d-%02d-%02d", t.year, t.month, t.day)
-end
 
 local function due_status(task)
   if not task.due then return nil end
