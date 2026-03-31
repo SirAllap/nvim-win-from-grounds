@@ -770,19 +770,56 @@ local function task_picker()
         end)
       end)
 
-      -- Add note/annotation to task
+      -- Add note/annotation to task (floating scratch buffer)
       map({ "i", "n" }, "<C-n>", function()
         local entry = action_state.get_selected_entry()
         if not entry then return end
         local task = entry.value
         local ref = task.status == "pending" and task.id or task.uuid
-        vim.ui.input({ prompt = "Add note to [" .. task.description:sub(1, 40) .. "]: " }, function(note)
-          if note and note ~= "" then
+
+        local buf = vim.api.nvim_create_buf(false, true)
+        vim.bo[buf].buftype = "nofile"
+        vim.bo[buf].bufhidden = "wipe"
+        vim.bo[buf].filetype = "markdown"
+
+        local width = math.min(80, vim.o.columns - 4)
+        local height = 12
+        local win = vim.api.nvim_open_win(buf, true, {
+          relative = "editor",
+          row = math.floor((vim.o.lines - height) / 2),
+          col = math.floor((vim.o.columns - width) / 2),
+          width = width,
+          height = height,
+          style = "minimal",
+          border = "rounded",
+          title = " Note: " .. task.description:sub(1, 50) .. " ",
+          title_pos = "center",
+          footer = " <C-s> save · <Esc>/<q> cancel ",
+          footer_pos = "center",
+        })
+        vim.wo[win].wrap = true
+        vim.wo[win].linebreak = true
+        vim.cmd("startinsert")
+
+        local function save()
+          local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+          while #lines > 0 and lines[#lines] == "" do table.remove(lines) end
+          local note = table.concat(lines, "\n")
+          vim.api.nvim_win_close(win, true)
+          if note ~= "" then
             vim.fn.system("task rc.confirmation=no " .. ref .. " annotate " .. vim.fn.shellescape(note))
             vim.notify("Note added", vim.log.levels.INFO)
             full_refresh(prompt_bufnr)
           end
-        end)
+        end
+
+        local function cancel()
+          vim.api.nvim_win_close(win, true)
+        end
+
+        vim.keymap.set({ "i", "n" }, "<C-s>", save, { buffer = buf, nowait = true })
+        vim.keymap.set("n", "q", cancel, { buffer = buf, nowait = true })
+        vim.keymap.set("n", "<Esc>", cancel, { buffer = buf, nowait = true })
       end)
 
       -- Open URL from annotations (or add one if none exist)
