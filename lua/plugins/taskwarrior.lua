@@ -468,14 +468,18 @@ local function task_picker()
       end)
       map("n", "j", function()
         if preview_mode and preview_winid and vim.api.nvim_win_is_valid(preview_winid) then
-          vim.api.nvim_win_call(preview_winid, function() vim.cmd("normal! 3j") end)
+          local buf = vim.api.nvim_win_get_buf(preview_winid)
+          local cursor = vim.api.nvim_win_get_cursor(preview_winid)
+          local max = vim.api.nvim_buf_line_count(buf)
+          vim.api.nvim_win_set_cursor(preview_winid, { math.min(cursor[1] + 1, max), 0 })
         else
           actions.move_selection_next(prompt_bufnr)
         end
       end)
       map("n", "k", function()
         if preview_mode and preview_winid and vim.api.nvim_win_is_valid(preview_winid) then
-          vim.api.nvim_win_call(preview_winid, function() vim.cmd("normal! 3k") end)
+          local cursor = vim.api.nvim_win_get_cursor(preview_winid)
+          vim.api.nvim_win_set_cursor(preview_winid, { math.max(cursor[1] - 1, 1), 0 })
         else
           actions.move_selection_previous(prompt_bufnr)
         end
