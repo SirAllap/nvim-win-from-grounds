@@ -344,9 +344,12 @@ local function open_note_float(title, default_text, on_save, on_cancel)
   -- Auto-continue list: pressing <CR> after "- item" starts next "- "
   vim.keymap.set("i", "<CR>", function()
     local line = vim.api.nvim_get_current_line()
-    if line:match("^%s*%- %[[ x]?%] .+") then
-      -- Checkbox list: continue with new unchecked item
-      return "<CR>" .. line:match("^(%s*%- )") .. "[ ] "
+    if line:match("^%s*%- %( ?[x]?%) .+") then
+      -- Checkbox with bullet: - () item  →  - ()
+      return "<CR>" .. line:match("^(%s*%- )") .. "() "
+    elseif line:match("^%s*%( ?[x]?%) .+") then
+      -- Plain checkbox: () item  →  ()
+      return "<CR>() "
     elseif line:match("^%s*%- .+") then
       return "<CR>" .. line:match("^(%s*%- )")
     elseif line:match("^%s*%- $") then
@@ -534,8 +537,8 @@ local function task_picker()
         local raw = vim.api.nvim_buf_get_lines(pbuf, cursor[1] - 1, cursor[1], false)[1] or ""
         local content = raw:match("^  (.+)") or raw
 
-        local is_unchecked = content:match("^%[ ?%]")   -- matches [] or [ ]
-        local is_checked   = content:match("^%[[xX]%]") -- matches [x] or [X]
+        local is_unchecked = content:match("^%( ?%)")    -- matches () or ( )
+        local is_checked   = content:match("^%(x%)")     -- matches (x)
         if not is_unchecked and not is_checked then return end
 
         local entry = action_state.get_selected_entry()
@@ -549,13 +552,17 @@ local function task_picker()
             local ann_lines = vim.split(desc, "\n", { plain = true })
             for j, al in ipairs(ann_lines) do
               if al == content then
-                ann_lines[j] = is_unchecked
-                  and al:gsub("^%[ ?%]", "[x]", 1)
-                  or  al:gsub("^%[[xX]%]", "[ ]", 1)
+                local new_line = is_unchecked
+                  and al:gsub("^%( ?%)", "(x)", 1)
+                  or  al:gsub("^%(x%)", "()", 1)
+                ann_lines[j] = new_line
                 local new_desc = table.concat(ann_lines, "\n")
                 vim.fn.system("task rc.confirmation=no " .. ref .. " denotate " .. vim.fn.shellescape(desc))
                 vim.fn.system("task rc.confirmation=no " .. ref .. " annotate " .. vim.fn.shellescape(new_desc))
-                full_refresh(prompt_bufnr)
+                ann.description = new_desc
+                -- Update only this line in the preview buffer — keep preview mode active
+                local new_content = "  " .. new_line .. content:sub(#al + 1)
+                vim.api.nvim_buf_set_lines(pbuf, cursor[1]-1, cursor[1], false, { new_content })
                 return
               end
             end
