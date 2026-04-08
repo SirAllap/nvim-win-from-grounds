@@ -7,6 +7,7 @@ local function set_hl()
 end
 set_hl()
 vim.api.nvim_create_autocmd("ColorScheme", { callback = set_hl })
+local checkbox_ns = vim.api.nvim_create_namespace("taskwarrior_checkbox")
 
 -- Due date helpers (defined early — used by sl_refresh and startup notification)
 local function today_ts()
@@ -447,6 +448,14 @@ local function task_picker()
       end
       vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, safe_lines)
       vim.bo[self.state.bufnr].filetype = "markdown"
+      vim.api.nvim_buf_clear_namespace(self.state.bufnr, checkbox_ns, 0, -1)
+      for i, line in ipairs(safe_lines) do
+        if line:match("^  %(x%)") then
+          vim.api.nvim_buf_set_extmark(self.state.bufnr, checkbox_ns, i - 1, 0, {
+            end_col = #line, hl_group = "TaskDone",
+          })
+        end
+      end
       vim.schedule(function()
         if vim.api.nvim_win_is_valid(self.state.winid) then
           vim.wo[self.state.winid].wrap = true
@@ -563,6 +572,15 @@ local function task_picker()
                 -- Update only this line in the preview buffer — keep preview mode active
                 local new_content = "  " .. new_line .. content:sub(#al + 1)
                 vim.api.nvim_buf_set_lines(pbuf, cursor[1]-1, cursor[1], false, { new_content })
+                if is_unchecked then
+                  vim.api.nvim_buf_set_extmark(pbuf, checkbox_ns, cursor[1]-1, 0, {
+                    end_col = #new_content, hl_group = "TaskDone",
+                  })
+                else
+                  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(pbuf, checkbox_ns, {cursor[1]-1, 0}, {cursor[1]-1, -1}, {})) do
+                    vim.api.nvim_buf_del_extmark(pbuf, checkbox_ns, mark[1])
+                  end
+                end
                 return
               end
             end
