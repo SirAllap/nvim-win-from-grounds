@@ -341,6 +341,17 @@ local function open_note_float(title, default_text, on_save, on_cancel)
   end
   vim.wo[win].wrap = true
   vim.wo[win].linebreak = true
+  -- Auto-continue list: pressing <CR> after "- item" starts next "- "
+  vim.keymap.set("i", "<CR>", function()
+    local line = vim.api.nvim_get_current_line()
+    if line:match("^%s*%- .+") then
+      return "<CR>" .. line:match("^(%s*%- )")
+    elseif line:match("^%s*%- $") then
+      -- Empty bullet: clear it and end the list
+      return "<C-u>"
+    end
+    return "<CR>"
+  end, { buffer = buf, expr = true, nowait = true })
   vim.cmd("startinsert")
 
   local function save()
