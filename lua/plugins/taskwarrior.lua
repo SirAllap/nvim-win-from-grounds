@@ -344,10 +344,12 @@ local function open_note_float(title, default_text, on_save, on_cancel)
   -- Auto-continue list: pressing <CR> after "- item" starts next "- "
   vim.keymap.set("i", "<CR>", function()
     local line = vim.api.nvim_get_current_line()
-    if line:match("^%s*%- .+") then
+    if line:match("^%s*%- %[[ x]%] .+") then
+      -- Checkbox list: continue with new unchecked item
+      return "<CR>" .. line:match("^(%s*%- )") .. "[ ] "
+    elseif line:match("^%s*%- .+") then
       return "<CR>" .. line:match("^(%s*%- )")
     elseif line:match("^%s*%- $") then
-      -- Empty bullet: clear it and end the list
       return "<C-u>"
     end
     return "<CR>"
@@ -520,8 +522,45 @@ local function task_picker()
         end
       end
       map("n", "l", function()
-        preview_mode = true
-        set_preview_hl(true)
+        if not preview_mode then
+          preview_mode = true
+          set_preview_hl(true)
+          return
+        end
+        -- Already in preview mode: toggle checkbox on cursor line
+        if not preview_winid or not vim.api.nvim_win_is_valid(preview_winid) then return end
+        local cursor = vim.api.nvim_win_get_cursor(preview_winid)
+        local pbuf = vim.api.nvim_win_get_buf(preview_winid)
+        local raw = vim.api.nvim_buf_get_lines(pbuf, cursor[1] - 1, cursor[1], false)[1] or ""
+        local content = raw:match("^  (.+)") or raw
+
+        local is_unchecked = content:match("^%[ %]")
+        local is_checked   = content:match("^%[x%]")
+        if not is_unchecked and not is_checked then return end
+
+        local entry = action_state.get_selected_entry()
+        if not entry then return end
+        local task = entry.value
+        local ref = task.status == "pending" and task.id or task.uuid
+
+        for _, ann in ipairs(task.annotations or {}) do
+          local desc = ann.description or ""
+          if not desc:match("^https?://") then
+            local ann_lines = vim.split(desc, "\n", { plain = true })
+            for j, al in ipairs(ann_lines) do
+              if al == content then
+                ann_lines[j] = is_unchecked
+                  and al:gsub("^%[ %]", "[x]", 1)
+                  or  al:gsub("^%[x%]", "[ ]", 1)
+                local new_desc = table.concat(ann_lines, "\n")
+                vim.fn.system("task rc.confirmation=no " .. ref .. " denotate " .. vim.fn.shellescape(desc))
+                vim.fn.system("task rc.confirmation=no " .. ref .. " annotate " .. vim.fn.shellescape(new_desc))
+                full_refresh(prompt_bufnr)
+                return
+              end
+            end
+          end
+        end
       end)
       map("n", "h", function()
         if preview_mode then
