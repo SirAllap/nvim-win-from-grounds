@@ -415,7 +415,13 @@ local function task_picker()
         if #notes > 0 then
           table.insert(lines, "")
           table.insert(lines, "Notes:")
-          for _, n in ipairs(notes) do table.insert(lines, "  - " .. n) end
+          for _, n in ipairs(notes) do
+            local note_lines = vim.split(n, "\n", { plain = true })
+            table.insert(lines, "  - " .. (note_lines[1] or ""))
+            for i = 2, #note_lines do
+              table.insert(lines, "    " .. note_lines[i])
+            end
+          end
         end
       end
       local safe_lines = {}
