@@ -99,7 +99,7 @@ return {
   },
    {
      "maxmx03/fluoromachine.nvim",
-     lazy = false,
+     lazy = true, -- available in the theme switcher, no longer forced as default
      opts = {
        glow = false, -- enable the neon glow effect
        theme = "fluoromachine", -- optional, you can pick variants
@@ -107,7 +107,6 @@ return {
      },
      config = function(_, opts)
        require("fluoromachine").setup(opts)
-       vim.cmd.colorscheme("fluoromachine")
      end,
    },
 

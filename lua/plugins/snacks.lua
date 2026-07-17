@@ -6,6 +6,15 @@ return {
         enabled = false,
       },
       gh = {},
+      lazygit = {
+        config = {
+          os = {
+            editPreset = "nvim-remote",
+            edit = 'nvim --server "$NVIM" --remote-send "<C-\\><C-N>:close<CR>:e {{filename}}<CR>"',
+            editAtLine = 'nvim --server "$NVIM" --remote-send "<C-\\><C-N>:close<CR>:e +{{line}} {{filename}}<CR>"',
+          },
+        },
+      },
       picker = {
         sources = {
           files = { hidden = true, ignored = true },
@@ -34,6 +43,20 @@ return {
 ⠹⣤⡀⠀⠐⡏⠀⠀⠉⠛⠿⣶⣿⣶⣤⣤⣤⣾⣷⠾⠟⠋⠀⠀⢸⡇⠀⢠⣤⠟
 ⠀⠀⠳⢤⠾⠃⠀⠀⠀⠀⠀⠀⠈⠉⠉⠉⠉⠁⠀⠀⠀⠀⠀⠀⠘⠷⠤⠾⠁⠀
 ]],
+        },
+      },
+      image = {
+        enabled = true,
+        convert = {
+          -- Mermaid rendered via system google-chrome; mmdc was installed without bundled Chromium.
+          mermaid = function()
+            local theme = vim.o.background == "light" and "neutral" or "dark"
+            return {
+              "-i", "{src}", "-o", "{file}", "-b", "transparent",
+              "-t", theme, "-s", "{scale}",
+              "-p", vim.fn.expand("~/.config/mermaid/puppeteer-config.json"),
+            }
+          end,
         },
       },
     },
